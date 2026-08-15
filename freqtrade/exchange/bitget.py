@@ -129,6 +129,9 @@ class Bitget(Exchange):
                 except ccxt.DDoSProtection as e:
                     raise DDosProtection(e) from e
                 except (ccxt.OperationFailed, ccxt.ExchangeError) as e:
+                    if self.trading_mode == TradingMode.FUTURES and params2 == paramsnew:
+                        # Older futures stoploss orders require the legacy stop filter.
+                        continue
                     raise TemporaryError(
                         f"Could not get order due to {e.__class__.__name__}. Message: {e}"
                     ) from e

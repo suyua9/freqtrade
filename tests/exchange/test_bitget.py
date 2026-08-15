@@ -2,6 +2,7 @@ from copy import deepcopy
 from datetime import timedelta
 from unittest.mock import MagicMock, PropertyMock
 
+import ccxt
 import pytest
 
 from freqtrade.enums import CandleType, MarginMode, RunMode, TradingMode
@@ -75,6 +76,34 @@ def test_fetch_stoploss_order_bitget_exceptions(default_conf_usdt, mocker):
         order_id="12345",
         pair="ETH/USDT",
     )
+
+
+@pytest.mark.usefixtures("init_persistence")
+def test_fetch_stoploss_order_bitget_futures_falls_back_after_plan_type_error(
+    default_conf_usdt, mocker
+):
+    default_conf_usdt["dry_run"] = False
+    default_conf_usdt["trading_mode"] = TradingMode.FUTURES
+    default_conf_usdt["margin_mode"] = MarginMode.ISOLATED
+    api_mock = MagicMock()
+
+    exchange = get_patched_exchange(mocker, default_conf_usdt, api_mock, exchange="bitget")
+    api_mock.fetch_open_orders = MagicMock(
+        side_effect=[
+            ccxt.ExchangeError("planType is not supported"),
+            [{"id": "1234", "status": "open", "clientOrderId": "1234"}],
+        ]
+    )
+    api_mock.fetch_canceled_and_closed_orders = MagicMock(return_value=[])
+
+    response = exchange.fetch_stoploss_order("1234", "ETH/USDT:USDT")
+
+    assert response["id"] == "1234"
+    assert response["type"] == "stoploss"
+    api_mock.fetch_open_orders.assert_any_call(
+        "ETH/USDT:USDT", params={"planType": "profit_loss"}
+    )
+    api_mock.fetch_open_orders.assert_any_call("ETH/USDT:USDT", params={"stop": True})
 
 
 @pytest.mark.usefixtures("init_persistence")
